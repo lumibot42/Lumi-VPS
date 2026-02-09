@@ -74,6 +74,13 @@
     nodejs_22 gnumake gcc pkg-config cmake ninja python3 steam-run
   ];
 
+
+  # --- User PATH reliability (survives reboot/login shell differences) ---
+  environment.sessionVariables = {
+    NPM_CONFIG_PREFIX = "$HOME/.npm-global";
+    PATH = [ "$HOME/.npm-global/bin" ];
+  };
+
   # Do NOT change after install
   system.stateVersion = "25.11";
 }

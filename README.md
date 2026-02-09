@@ -1,77 +1,56 @@
 # NixOS VPS Rebuild Runbook
 
-## What this is
-NixOS configuration for Erik's VPS running OpenClaw (Lumi).
-- **Host:** IONOS VPS, IP 74.208.111.130
-- **OS:** NixOS 25.11
-- **Hardware:** AMD EPYC-Milan, 8 cores, 16GB RAM, 464GB disk
+## Source of truth
+- `/etc/nixos` is the canonical system config.
+- Uses both classic `configuration.nix` and flake entrypoint (`flake.nix`) for reproducible rebuilds.
 
-## Rebuild from scratch
+## Rebuild commands
 
-### 1. Provision a fresh VPS
-Any VPS with NixOS support, or use nixos-infect on a Debian/Ubuntu base:
+### Standard (current host)
 ```bash
-curl https://raw.githubusercontent.com/elitak/nixos-infect/master/nixos-infect | NIX_CHANNEL=nixos-25.11 bash -x
+sudo nixos-rebuild switch
 ```
 
-### 2. Clone this config
+### Reproducible (pinned via flake.lock)
+```bash
+sudo nixos-rebuild switch --flake /etc/nixos#nixos
+```
+
+## Update workflow (best practice)
+
+1. Edit config in `/etc/nixos`
+2. Test build:
+```bash
+sudo nixos-rebuild test --flake /etc/nixos#nixos
+```
+3. Apply:
+```bash
+sudo nixos-rebuild switch --flake /etc/nixos#nixos
+```
+4. Commit:
+```bash
+sudo git -C /etc/nixos add -A
+sudo git -C /etc/nixos commit -m "describe change"
+```
+
+## Upgrade workflow
+
 ```bash
 cd /etc/nixos
-git clone <REMOTE_URL> .
+sudo nix flake update
+sudo nixos-rebuild switch --flake /etc/nixos#nixos
+sudo git add flake.lock
+sudo git commit -m "chore: flake update"
 ```
 
-### 3. Update hardware-configuration.nix
-If the hardware changed, regenerate:
-```bash
-nixos-generate-config --show-hardware-config > hardware-configuration.nix
-```
+## Disaster recovery checklist
+- [ ] Push `/etc/nixos` repo to private remote
+- [ ] Backup `~/.openclaw/openclaw.json`
+- [ ] Backup `~/.openclaw/.env`
+- [ ] Backup `~/.openclaw/credentials/` (mode 700)
+- [ ] Backup `~/.openclaw/workspace/`
 
-### 4. Update networking.nix
-Update IP, gateway, and interface name to match the new VPS.
-
-### 5. Rebuild
-```bash
-nixos-rebuild switch
-```
-
-### 6. Set passwords
-```bash
-passwd root
-passwd lumi
-```
-
-### 7. Install OpenClaw
-```bash
-su - lumi
-npm install -g openclaw
-openclaw onboard
-```
-
-### 8. Restore OpenClaw state
-Copy from backup:
-- `~/.openclaw/openclaw.json` — config
-- `~/.openclaw/.env` — API keys
-- `~/.openclaw/credentials/` — OAuth tokens
-- `~/.openclaw/workspace/` — memory, identity, etc.
-
-### 9. Pull Ollama model
-```bash
-ollama pull qwen2.5:7b
-```
-
-### 10. Start OpenClaw
-```bash
-openclaw gateway start
-```
-
-## Files
-- `configuration.nix` — main system config (source of truth)
-- `hardware-configuration.nix` — auto-detected hardware (regenerate per-host)
-- `networking.nix` — static IP and routes (update per-host)
-
-## Backup checklist
-- [ ] `/etc/nixos/` — this repo
-- [ ] `~/.openclaw/openclaw.json` — OpenClaw config
-- [ ] `~/.openclaw/.env` — environment secrets
-- [ ] `~/.openclaw/credentials/` — OAuth tokens
-- [ ] `~/.openclaw/workspace/` — Lumi's memory and identity
+## Notes
+- Keep changes declarative (no imperative drift).
+- Keep comments concise and operational.
+- Prefer `nixos-rebuild ... --flake` for reproducibility.
