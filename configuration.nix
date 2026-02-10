@@ -69,7 +69,7 @@
   nixpkgs.config.allowUnfree = true;
   environment.systemPackages = with pkgs; [
     # Utilities
-    curl git nano htop tmux tree
+    curl git nano htop tmux tree fastfetch
     # OpenClaw runtime + native build deps
     nodejs_22 gnumake gcc pkg-config cmake ninja python3 steam-run
   ];
