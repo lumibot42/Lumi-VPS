@@ -12,18 +12,18 @@ ssh root@YOUR_SERVER_IP
 apt update && apt install -y git curl
 ```
 
-## 3) Get recovery script (private-repo safe)
+## 3) Get recovery script (public repo)
 
-### Option A (recommended): copy from your local machine
-```bash
-scp ./recovery-migrate.sh root@YOUR_SERVER_IP:/root/recovery-migrate.sh
-ssh root@YOUR_SERVER_IP 'chmod +x /root/recovery-migrate.sh'
-```
-
-### Option B: raw URL (only works if repo/public tokened URL)
+### Option A (recommended): pull from GitHub raw URL
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
 chmod +x /root/recovery-migrate.sh
+```
+
+### Option B (fallback): copy from your local machine
+```bash
+scp ./recovery-migrate.sh root@YOUR_SERVER_IP:/root/recovery-migrate.sh
+ssh root@YOUR_SERVER_IP 'chmod +x /root/recovery-migrate.sh'
 ```
 
 ## 4) Run migration (Ubuntu -> NixOS)
@@ -50,8 +50,16 @@ ssh root@YOUR_SERVER_IP
 ```
 If prior state is missing, script re-prompts and continues.
 
+### Restore phase now also handles:
+- `git` install on NixOS (if missing)
+- optional OpenClaw install for admin user
+- PATH setup across `.profile`, `.bashrc`, `.zshrc`
+- `/etc/profile.d/openclaw-path.sh`
+- `/usr/local/bin/openclaw` shim
+- post-install verification output (`PATH`, `which openclaw`, `openclaw --version` for root + admin)
+
 ## 7) Restore OpenClaw state backups
-As `lumi`, restore:
+As admin user (e.g., `lumi`), restore:
 - `~/.openclaw/openclaw.json`
 - `~/.openclaw/.env`
 - `~/.openclaw/credentials/`

@@ -188,7 +188,9 @@ echo "$SSH_PUBKEY" > /root/.ssh/authorized_keys
 chmod 600 /root/.ssh/authorized_keys
 
 if ! command -v git >/dev/null 2>&1; then
-  nix-shell -p git --run true
+  log "git not found on NixOS; installing it now"
+  nix profile install nixpkgs#git
+  hash -r
 fi
 
 if [[ -d /etc/nixos/.git ]]; then
@@ -222,6 +224,57 @@ if [[ "${SET_ROOT_PW,,}" == "y" || "${SET_ROOT_PW,,}" == "yes" ]]; then
 else
   warn "Skipped root password."
 fi
+
+read -rp "Install OpenClaw for $ADMIN_USER now? [Y/n]: " INSTALL_OPENCLAW
+if [[ -z "${INSTALL_OPENCLAW:-}" || "${INSTALL_OPENCLAW,,}" == "y" || "${INSTALL_OPENCLAW,,}" == "yes" ]]; then
+  log "Installing OpenClaw prerequisites"
+  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    nix profile install nixpkgs#nodejs_22
+    hash -r
+  fi
+
+  log "Installing OpenClaw as $ADMIN_USER"
+  ADMIN_HOME="$(getent passwd "$ADMIN_USER" | cut -d: -f6)"
+  [[ -n "$ADMIN_HOME" ]] || { err "Could not determine home for $ADMIN_USER"; exit 1; }
+
+  su - "$ADMIN_USER" -c 'mkdir -p "$HOME/.npm-global"'
+  su - "$ADMIN_USER" -c 'npm config set prefix "$HOME/.npm-global"'
+
+  for RC in ".profile" ".bashrc" ".zshrc"; do
+    su - "$ADMIN_USER" -c "touch \"$ADMIN_HOME/$RC\""
+    su - "$ADMIN_USER" -c "grep -qxF 'export PATH=\"\$HOME/.npm-global/bin:\$PATH\"' \"$ADMIN_HOME/$RC\" || echo 'export PATH=\"\$HOME/.npm-global/bin:\$PATH\"' >> \"$ADMIN_HOME/$RC\""
+  done
+
+  cat > /etc/profile.d/openclaw-path.sh <<EOF
+export PATH="$ADMIN_HOME/.npm-global/bin:\$PATH"
+EOF
+  chmod 644 /etc/profile.d/openclaw-path.sh
+
+  su - "$ADMIN_USER" -c 'export PATH="$HOME/.npm-global/bin:$PATH"; npm install -g openclaw'
+
+  if [[ -x "$ADMIN_HOME/.npm-global/bin/openclaw" ]]; then
+    ln -sf "$ADMIN_HOME/.npm-global/bin/openclaw" /usr/local/bin/openclaw
+    chmod 755 /usr/local/bin/openclaw
+    log "OpenClaw installed: $ADMIN_HOME/.npm-global/bin/openclaw"
+    log "Global shim installed: /usr/local/bin/openclaw"
+    su - "$ADMIN_USER" -c 'openclaw --version' >/dev/null 2>&1 || warn "openclaw installed, but command not available in current non-login shell yet."
+  else
+    warn "OpenClaw install finished but binary not found in expected path."
+  fi
+else
+  warn "Skipped OpenClaw installation."
+fi
+
+log "Post-install checks"
+printf "\n[root] PATH=%s\n" "$PATH"
+if command -v openclaw >/dev/null 2>&1; then
+  printf "[root] which openclaw: %s\n" "$(command -v openclaw)"
+  openclaw --version || warn "[root] openclaw found but --version failed"
+else
+  warn "[root] openclaw not found in PATH"
+fi
+
+su - "$ADMIN_USER" -c 'printf "\n['"$ADMIN_USER"'] PATH=%s\n" "$PATH"; if command -v openclaw >/dev/null 2>&1; then printf "['"$ADMIN_USER"'] which openclaw: %s\n" "$(command -v openclaw)"; openclaw --version || true; else echo "['"$ADMIN_USER"'] openclaw not found in PATH"; fi'
 
 log "Done. Reconnect as: ssh $ADMIN_USER@$SERVER_ENDPOINT"
 EOS
