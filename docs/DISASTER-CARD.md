@@ -12,7 +12,15 @@ ssh root@YOUR_SERVER_IP
 apt update && apt install -y git curl
 ```
 
-## 3) Download recovery script
+## 3) Get recovery script (private-repo safe)
+
+### Option A (recommended): copy from your local machine
+```bash
+scp ./recovery-migrate.sh root@YOUR_SERVER_IP:/root/recovery-migrate.sh
+ssh root@YOUR_SERVER_IP 'chmod +x /root/recovery-migrate.sh'
+```
+
+### Option B: raw URL (only works if repo/public tokened URL)
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
 chmod +x /root/recovery-migrate.sh
@@ -40,7 +48,7 @@ ssh root@YOUR_SERVER_IP
 ```bash
 /root/recovery-migrate.sh
 ```
-This restores `/etc/nixos` and applies flake config.
+If prior state is missing, script re-prompts and continues.
 
 ## 7) Restore OpenClaw state backups
 As `lumi`, restore:

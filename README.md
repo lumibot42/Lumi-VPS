@@ -2,21 +2,9 @@
 
 ## Source of truth
 - `/etc/nixos` is the canonical system config.
-- Uses both classic `configuration.nix` and flake entrypoint (`flake.nix`) for reproducible rebuilds.
+- Flakes are the primary workflow (`flake.nix` + `flake.lock`) for reproducible rebuilds.
 
-## Rebuild commands
-
-### Standard (current host)
-```bash
-sudo nixos-rebuild switch
-```
-
-### Reproducible (pinned via flake.lock)
-```bash
-sudo nixos-rebuild switch --flake /etc/nixos#nixos
-```
-
-## Update workflow (best practice)
+## Rebuild workflow (flake-first)
 
 1. Edit config in `/etc/nixos`
 2. Test build:
@@ -41,6 +29,12 @@ sudo nix flake update
 sudo nixos-rebuild switch --flake /etc/nixos#nixos
 sudo git add flake.lock
 sudo git commit -m "chore: flake update"
+```
+
+## Legacy fallback (emergency only)
+Use only if flake entrypoint is unavailable:
+```bash
+sudo nixos-rebuild switch
 ```
 
 ## Disaster recovery checklist
