@@ -1,354 +1,392 @@
-# Ubuntu 24.04 → NixOS + OpenClaw Rebuild Guide
+# Ubuntu VPS → Fresh NixOS + OpenClaw (First-Time, Script-Failure-Proof Guide)
 
-**Last updated:** 2026-02-10
+**Last updated:** 2026-02-11  
 **Canonical repo:** `git@github.com:lumibot42/Lumi-VPS.git`
 
 ---
 
-## Preferred path (recommended)
+## Read this first (important)
 
-Use the maintained recovery script from this repo:
+This guide is written for a **total first-timer** and for a **worst-case scenario** where automation fails.
 
-```bash
-# On fresh Ubuntu VPS as root
-apt update && apt install -y git curl
+You can follow this with:
+- no existing SSH keys
+- no existing NixOS knowledge
+- no working recovery script
 
-# Preferred: pull directly from the public repo
-curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
+### Core rule for future maintenance (for any agent/operator)
 
-# Optional fallback: copy from local machine
-# scp ./recovery-migrate.sh root@YOUR_SERVER_IP:/root/recovery-migrate.sh
+This host is a **NixOS system**. Any system changes must be done in NixOS context:
 
-chmod +x /root/recovery-migrate.sh
-/root/recovery-migrate.sh
-```
+1. Prefer declarative changes in `/etc/nixos/*.nix`
+2. Use `nixos-rebuild test --flake ...` before `switch`
+3. Use official docs first before system changes:
+   - https://nixos.org/manual/nixos/stable/
+   - https://wiki.nixos.org/
 
-Optional preflight (non-destructive):
-
-```bash
-/root/recovery-migrate.sh --smoke-test
-```
-
-View script flags/help:
-
-```bash
-/root/recovery-migrate.sh --help
-```
-
-This checks prerequisites + repo authentication without running `nixos-infect` or applying rebuild changes.
-
-**Recommendation:** Always run `--smoke-test` immediately before starting migration on a fresh host.
-
-After reboot to NixOS, run the same script again:
-
-```bash
-/root/recovery-migrate.sh
-```
-
-If `/root/recovery-migrate.sh` is missing (common after reimage), re-download it:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
-chmod +x /root/recovery-migrate.sh
-/root/recovery-migrate.sh
-```
-
-If migration state is missing, it re-prompts and continues.
-
-No SSH keys are hardcoded in the recovery script. It prompts for key details (or asks to generate a key) at runtime.
+Do **not** treat this like Ubuntu when changing persistent system config.
 
 ---
 
-## What the recovery script now handles
+## Goal
 
-### Ubuntu phase
-- Collects required recovery inputs and stores them in `/root/.lumi-recovery/state.env`
-- Installs Ubuntu prerequisites (`curl`, `git`)
-- Configures root SSH authorized key
-- Runs `nixos-infect`
-
-### NixOS phase
-- Rehydrates state (or re-prompts if state file is missing)
-- Restores `/etc/nixos` from repo and runs flake rebuild
-- Ensures admin/root SSH access and optional password setup
-- **Auto-installs `git` on NixOS if missing**
-- **Optional OpenClaw install** for admin user
-  - Installs Node.js (`nodejs_22`) if needed
-  - Sets npm prefix to `~/.npm-global`
-  - Resolves PATH in `.profile`, `.bashrc`, `.zshrc`
-  - Uses user shell rc PATH updates (`.profile`, `.bashrc`, `.zshrc`) + runtime PATH export
-  - Creates global shim: `/usr/local/bin/openclaw`
-- **Post-install checks** print PATH + `which openclaw` + `openclaw --version` for root and admin user
+End state should be:
+1. VPS running fresh NixOS
+2. `/etc/nixos` restored from `lumibot42/Lumi-VPS`
+3. SSH hardened + reachable
+4. OpenClaw installed and runnable
+5. OpenClaw state restored (if backup exists)
 
 ---
 
-## Windows: SSH key setup (beginner-friendly)
+## Phase 0 — What you need before starting
 
-If you're on Windows and have never used SSH keys, do this first. You only need to do it once per computer.
+Have these ready:
+- VPS provider console access (very important if SSH breaks)
+- VPS public IPv4 (or DNS)
+- Your local machine terminal (Windows/macOS/Linux)
+- GitHub account access (to add SSH key)
 
-### A) Open PowerShell
+---
 
-1. Press **Start**
-2. Type **PowerShell**
-3. Open **Windows PowerShell** (or **Terminal** with a PowerShell tab)
+## Phase 1 — Create SSH keys (if you don’t have any)
 
-### B) Check that OpenSSH is available
+## Windows (PowerShell)
 
-Run:
+1. Open PowerShell
+2. Check SSH client:
 
 ```powershell
 ssh -V
 ```
 
-- If it prints a version (for example `OpenSSH_for_Windows_9.x`), continue.
-- If it says command not found, install OpenSSH Client:
-  - **Settings → Apps → Optional Features → Add a feature → OpenSSH Client → Install**
-  - Re-open PowerShell and run `ssh -V` again.
+If command missing: install **OpenSSH Client** in Windows Optional Features.
 
-### C) Generate a new SSH key pair
-
-Run:
+3. Create key:
 
 ```powershell
 ssh-keygen -t ed25519 -C "lumi-vps"
 ```
 
-When prompted:
+Press Enter for default key location.
 
-- **Enter file in which to save the key** → press **Enter** (accept default)
-- **Enter passphrase** → optional (recommended, but can be empty)
-- **Enter same passphrase again**
-
-This creates:
-- Private key: `C:\Users\<you>\.ssh\id_ed25519` (keep secret)
-- Public key: `C:\Users\<you>\.ssh\id_ed25519.pub` (safe to share)
-
-### D) Copy your public key
-
-Run:
+4. Print public key:
 
 ```powershell
 Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
 ```
 
-Copy the full line starting with `ssh-ed25519`.
+Copy the full line (`ssh-ed25519 ...`).
 
-### E) Add key to GitHub
+## macOS/Linux
 
-1. Go to **GitHub → Settings → SSH and GPG keys**
-2. Click **New SSH key**
+```bash
+ssh-keygen -t ed25519 -C "lumi-vps"
+cat ~/.ssh/id_ed25519.pub
+```
+
+Copy full public key line.
+
+---
+
+## Phase 2 — Add your key to GitHub (for repo access)
+
+1. GitHub → Settings → SSH and GPG keys
+2. New SSH key
 3. Title: `Lumi VPS` (or similar)
-4. Key type: **Authentication Key**
-5. Paste the full key line
-6. Click **Add SSH key**
+4. Paste your **public key**
+5. Save
 
-### F) Trust GitHub host key (first-use prompt)
+Test from your local machine:
 
-Run:
-
-```powershell
+```bash
 ssh -T git@github.com
 ```
 
-- If asked to continue connecting, type `yes`
-- Successful auth usually ends with:
-  - `Hi <username>! You've successfully authenticated...`
+Expected: authentication success message.
 
-### G) Test repo access
+---
 
-Run:
+## Phase 3 — Prepare fresh Ubuntu VPS (root)
 
-```powershell
-git ls-remote git@github.com:lumibot42/Lumi-VPS.git
-```
-
-If you see commit hashes/refs, SSH auth is working.
-
-### Common mistakes
-
-- Sharing `id_ed25519` instead of `id_ed25519.pub` (never share private key)
-- Copying only part of the public key line
-- Adding key to wrong GitHub account
-- Running in old shell session after installing OpenSSH (open a new PowerShell)
-
-## Manual path (fallback)
-
-### 1) Prepare Ubuntu
+SSH into fresh Ubuntu VPS as root:
 
 ```bash
 ssh root@YOUR_SERVER_IP
-apt update && apt install -y curl git
-mkdir -p /root/.ssh && chmod 700 /root/.ssh
-echo "YOUR_PUBLIC_KEY_HERE" > /root/.ssh/authorized_keys
-chmod 600 /root/.ssh/authorized_keys
-umount /boot/efi 2>/dev/null || umount -l /boot/efi 2>/dev/null || true
 ```
 
-### 2) Run nixos-infect
+Install minimum tools:
 
 ```bash
+apt update && apt install -y curl git
+```
+
+Install your SSH public key for root access:
+
+```bash
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+cat > /root/.ssh/authorized_keys
+# paste your public key, then press Enter
+# press Ctrl+D to save
+chmod 600 /root/.ssh/authorized_keys
+```
+
+---
+
+## Phase 4 — Try automation first (safe approach)
+
+Get script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
+chmod +x /root/recovery-migrate.sh
+```
+
+Run smoke test first:
+
+```bash
+/root/recovery-migrate.sh --smoke-test
+```
+
+If smoke test passes, run migration:
+
+```bash
+/root/recovery-migrate.sh
+```
+
+If script fails at any point, continue with manual phases below.
+
+---
+
+## Phase 5 — Manual Ubuntu → NixOS migration (no script)
+
+⚠️ This is destructive (Ubuntu replaced by NixOS).
+
+```bash
+umount /boot/efi 2>/dev/null || umount -l /boot/efi 2>/dev/null || true
 curl -fsSL https://raw.githubusercontent.com/elitak/nixos-infect/master/nixos-infect -o /root/nixos-infect
 chmod +x /root/nixos-infect
 sed -i '/rm -rf \$bootFs\.bak/i : "${bootFs:=/boot}"' /root/nixos-infect
 doNetConf=y NIX_CHANNEL=nixos-25.11 bash -x /root/nixos-infect
 ```
 
-Reconnect after reboot.
+System will reboot.
 
-### 3) Restore `/etc/nixos`
-
-```bash
-rm -rf /etc/nixos/*
-git clone git@github.com:lumibot42/Lumi-VPS.git /etc/nixos
-nixos-rebuild switch --flake /etc/nixos#nixos
-```
-
-### 4) Install OpenClaw manually (if not done via script)
+Reconnect:
 
 ```bash
-# as admin user
-mkdir -p ~/.npm-global
-npm config set prefix ~/.npm-global
-echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.profile
-source ~/.profile
-npm install -g openclaw
-```
-
-Optional global shim:
-
-```bash
-sudo ln -sf /home/<admin-user>/.npm-global/bin/openclaw /usr/local/bin/openclaw
+ssh root@YOUR_SERVER_IP
 ```
 
 ---
 
-## Failsafe manual recovery (if script automation fails)
+## Phase 6 — Manual NixOS recovery of `/etc/nixos`
 
-Use this section if either `git` install or `openclaw` install fails during restore.
-
-### A) Failsafe: install git on NixOS manually
-
-Run as `root`:
+### 6.1 Ensure git exists on NixOS
 
 ```bash
-# ensure nix-command + flakes are available in this shell invocation
 nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#git
 hash -r
 git --version
 ```
 
-If that still fails, use ephemeral shell just to run git commands:
+### 6.2 Ensure root SSH can reach GitHub
 
 ```bash
-nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#git -c git --version
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+ssh-keyscan -H github.com >> /root/.ssh/known_hosts
+chmod 600 /root/.ssh/known_hosts
 ```
 
-Then clone/restore config:
+If key missing on server, generate one and add to GitHub:
 
 ```bash
-rm -rf /etc/nixos/*
+ssh-keygen -t ed25519 -N '' -f /root/.ssh/id_ed25519 -C "recovery@$(hostname)"
+cat /root/.ssh/id_ed25519.pub
+```
+
+Paste that pubkey into GitHub SSH keys, then test:
+
+```bash
+git ls-remote git@github.com:lumibot42/Lumi-VPS.git
+```
+
+### 6.3 Restore `/etc/nixos` from repo
+
+```bash
+mkdir -p /etc/nixos
+find /etc/nixos -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 git clone git@github.com:lumibot42/Lumi-VPS.git /etc/nixos
+```
+
+### 6.4 Apply config safely
+
+```bash
+nixos-rebuild test --flake /etc/nixos#nixos
 nixos-rebuild switch --flake /etc/nixos#nixos
-```
-
-### B) Failsafe: install OpenClaw manually on NixOS
-
-Run as admin user (example: `lumi`):
-
-```bash
-# 1) ensure Node.js and npm exist
-command -v node || nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#nodejs_22
-command -v npm || nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#nodejs_22
-
-# 2) configure user npm global prefix
-mkdir -p ~/.npm-global
-npm config set prefix ~/.npm-global
-
-# 3) ensure PATH for future logins
-grep -qxF 'export PATH="$HOME/.npm-global/bin:$PATH"' ~/.profile || echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.profile
-grep -qxF 'export PATH="$HOME/.npm-global/bin:$PATH"' ~/.bashrc || echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc
-
-# 4) load PATH in current shell and install
-export PATH="$HOME/.npm-global/bin:$PATH"
-npm install -g openclaw
-openclaw --version
-```
-
-Optional global shim (run as root):
-
-```bash
-ln -sf /home/<admin-user>/.npm-global/bin/openclaw /usr/local/bin/openclaw
-chmod 755 /usr/local/bin/openclaw
-```
-
-### C) If `openclaw` command still not found
-
-```bash
-# check expected binary
-ls -l /home/<admin-user>/.npm-global/bin/openclaw
-
-# temporary path in current shell
-export PATH="/home/<admin-user>/.npm-global/bin:$PATH"
-openclaw --version
-
-# verify from a clean login shell
-su - <admin-user> -c 'command -v openclaw && openclaw --version'
 ```
 
 ---
 
-## Post-restore checklist
+## Phase 7 — Create admin user + SSH access (if needed)
 
-### Restore OpenClaw state (as admin user, e.g. `lumi`)
-Restore from backup:
+If `lumi` user is missing:
+
+```bash
+id lumi >/dev/null 2>&1 || useradd -m -G wheel lumi
+```
+
+Set SSH key for lumi:
+
+```bash
+mkdir -p /home/lumi/.ssh
+echo "YOUR_PUBLIC_KEY_HERE" > /home/lumi/.ssh/authorized_keys
+chmod 700 /home/lumi/.ssh
+chmod 600 /home/lumi/.ssh/authorized_keys
+chown -R lumi:users /home/lumi/.ssh
+```
+
+Optional: set password
+
+```bash
+passwd lumi
+```
+
+---
+
+## Phase 8 — Install OpenClaw manually (if script fails)
+
+Run as `lumi` user:
+
+```bash
+su - lumi
+```
+
+Install Node.js/npm in `lumi` context:
+
+```bash
+nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#nodejs_22
+```
+
+Set npm global directory and PATH:
+
+```bash
+mkdir -p ~/.npm-global
+npm config set prefix ~/.npm-global
+grep -qxF 'export PATH="$HOME/.npm-global/bin:$PATH"' ~/.profile || echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.profile
+grep -qxF 'export PATH="$HOME/.npm-global/bin:$PATH"' ~/.bashrc || echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc
+export PATH="$HOME/.npm-global/bin:$PATH"
+```
+
+Install OpenClaw:
+
+```bash
+npm install -g openclaw
+openclaw --version
+```
+
+Optional system shim (run as root in separate shell):
+
+```bash
+ln -sf /home/lumi/.npm-global/bin/openclaw /usr/local/bin/openclaw
+chmod 755 /usr/local/bin/openclaw
+```
+
+---
+
+## Phase 9 — Restore OpenClaw state (if backup exists)
+
+As `lumi`, restore:
 - `~/.openclaw/openclaw.json`
 - `~/.openclaw/.env`
 - `~/.openclaw/credentials/`
 - `~/.openclaw/workspace/`
 
-Then:
+Then fix permissions:
 
 ```bash
 chmod 700 ~/.openclaw/credentials
+```
+
+Start + verify:
+
+```bash
 openclaw gateway start
 openclaw status --deep
 openclaw models status
 ```
 
-### Pull local heartbeat model
+---
+
+## Phase 10 — Final verification checklist
+
+Run and confirm success:
 
 ```bash
-ollama pull qwen2.5:7b
+# ssh still works
+ss -ltnp | grep ':22' || true
+
+# config health
+nix --extra-experimental-features 'nix-command flakes' flake check /etc/nixos
+nixos-rebuild test --flake /etc/nixos#nixos
+
+# OpenClaw
+openclaw gateway status
+openclaw status --deep
+openclaw update status
+openclaw security audit --deep
 ```
 
-### Verify terminal baseline
-
-```bash
-fastfetch
-```
+Expected:
+- no critical OpenClaw security findings
+- gateway running
+- flake checks pass
 
 ---
 
-## Repo visibility note
+## Common failure map (quick triage)
 
-- This repo is intentionally maintained as **public**.
-- Recovery commands and examples in this guide assume public GitHub access.
-- If visibility ever changes to private, use SSH deploy keys or token-auth HTTPS for clone/fetch.
+### `recovery-migrate.sh: No such file`
+Re-download it:
+```bash
+curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
+chmod +x /root/recovery-migrate.sh
+```
 
-## Current security/model baseline
+### `nix-command is disabled`
+Use explicit features:
+```bash
+nix --extra-experimental-features 'nix-command flakes' ...
+```
 
-- Primary model: `anthropic/claude-opus-4-6`
-- Fallback model: `openai-codex/gpt-5.3-codex`
-- Heartbeat model: `ollama/qwen2.5:7b`
-- Discord elevated access: **disabled** (`tools.elevated.allowFrom.discord=[]`)
-- Discord access policy: allowlisted to owner user ID only
+### `Permission denied (publickey)` on clone
+- Generate server key (`ssh-keygen ...`)
+- Add `.pub` key to GitHub
+- Retry `git ls-remote`
+
+### `openclaw: command not found`
+```bash
+export PATH="$HOME/.npm-global/bin:$PATH"
+command -v openclaw
+openclaw --version
+```
+If needed, create `/usr/local/bin/openclaw` shim.
 
 ---
 
-## Notes
+## Design decisions for this repo
 
-- Flake workflow is the source of truth:
-  - Test: `sudo nixos-rebuild test --flake /etc/nixos#nixos`
-  - Apply: `sudo nixos-rebuild switch --flake /etc/nixos#nixos`
-- Keep secrets out of workspace where possible.
-- Update this guide and `docs/DISASTER-CARD.md` whenever recovery flow changes.
+- This repo is the canonical restore source for this VPS.
+- Target outcome: clean NixOS + OpenClaw recovery.
+- **No hardcoded SSH authorized keys** in `configuration.nix`.
+- SSH keys are runtime-provisioned per rebuild for key rotation.
+
+---
+
+## Operator note for future agents
+
+When changing system behavior for this host:
+1. Read latest NixOS docs first.
+2. Make declarative edits in `/etc/nixos` / repo files.
+3. Run `nixos-rebuild test --flake ...` before `switch`.
+4. Keep recovery docs updated whenever workflow changes.
