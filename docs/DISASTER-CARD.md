@@ -1,117 +1,164 @@
-# 🚨 Lumi VPS Disaster Recovery Card
+# 🚨 Lumi VPS Disaster Card (Quick Recovery)
 
-Use this when rebuilding from **fresh Ubuntu**.
+Use this if the recovery script fails or you need a fast manual path.
 
-## 1) Connect to VPS
+**Goal:** fresh Ubuntu VPS → fresh NixOS → restore `/etc/nixos` → install OpenClaw.
+
+Canonical repo: `git@github.com:lumibot42/Lumi-VPS.git`
+
+---
+
+## 0) Non-negotiable rules
+
+- This host is **NixOS-first**. Persistent system changes must be done via NixOS config.
+- Before system changes, check latest official docs:
+  - https://nixos.org/manual/nixos/stable/
+  - https://wiki.nixos.org/
+- No hardcoded SSH authorized keys in `configuration.nix`.
+- SSH keys are runtime-provisioned during restore.
+
+---
+
+## 1) Generate SSH key (if you don’t have one)
+
+### Windows PowerShell
+```powershell
+ssh -V
+ssh-keygen -t ed25519 -C "lumi-vps"
+Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
+```
+
+### macOS/Linux
+```bash
+ssh-keygen -t ed25519 -C "lumi-vps"
+cat ~/.ssh/id_ed25519.pub
+```
+
+Copy the full public key line.
+
+---
+
+## 2) Add key to GitHub
+
+GitHub → Settings → SSH and GPG keys → New SSH key → paste public key.
+
+Optional local test:
+```bash
+ssh -T git@github.com
+```
+
+---
+
+## 3) Fresh Ubuntu prep (root)
+
 ```bash
 ssh root@YOUR_SERVER_IP
+apt update && apt install -y curl git
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+cat > /root/.ssh/authorized_keys
+# paste your public key
+# Ctrl+D
+chmod 600 /root/.ssh/authorized_keys
 ```
 
-## 2) Install prerequisites
-```bash
-apt update && apt install -y git curl
-```
+---
 
-## 3) Get recovery script (public repo)
+## 4) Script path (recommended)
 
-### Option A (recommended): pull from GitHub raw URL
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
 chmod +x /root/recovery-migrate.sh
-```
-
-### Option B (fallback): copy from your local machine
-```bash
-scp ./recovery-migrate.sh root@YOUR_SERVER_IP:/root/recovery-migrate.sh
-ssh root@YOUR_SERVER_IP 'chmod +x /root/recovery-migrate.sh'
-```
-
-## 4) Optional preflight (safe dry check)
-```bash
+/root/recovery-migrate.sh --help
 /root/recovery-migrate.sh --smoke-test
 ```
-This validates prerequisites and repo auth only (no destructive changes).
 
-**Strongly recommended:** run this right before migration on any fresh rebuild.
-
-Need flags quick reference:
-```bash
-/root/recovery-migrate.sh --help
-```
-
-## 5) Run migration (Ubuntu -> NixOS)
+If smoke test passes:
 ```bash
 /root/recovery-migrate.sh
 ```
-Prompts for:
-- admin username
-- server endpoint
-- SSH public key
-- NixOS repo URL (`git@github.com:lumibot42/Lumi-VPS.git`)
-- flake host (`nixos` default)
 
-No SSH keys are hardcoded in the script; it prompts when needed.
+> System reboots after Ubuntu → NixOS migration.
 
-Critical: paste the correct SSH public key when prompted, or you can lock yourself out.
-
-If you need to generate a key from Windows, see **"Windows: SSH key setup (beginner-friendly)"** in `docs/vps-rebuild-guide.md`.
-
-> System will reboot automatically.
-
-## 6) Reconnect after reboot (now NixOS)
+Reconnect:
 ```bash
 ssh root@YOUR_SERVER_IP
 ```
 
-## 7) Optional post-reboot smoke test
+Optional post-reboot smoke test:
 ```bash
 /root/recovery-migrate.sh --smoke-test
 ```
 
-## 8) Run restore phase
+Run restore phase:
 ```bash
 /root/recovery-migrate.sh
 ```
-If prior state is missing, script re-prompts and continues.
 
-### Restore phase now also handles:
-- `git` install on NixOS (if missing)
-- optional OpenClaw install for admin user
-- User shell PATH entries (`.profile`, `.bashrc`, `.zshrc`) and `/usr/local/bin/openclaw` shim
-- post-install verification output (`PATH`, `which openclaw`, `openclaw --version` for root + admin)
+---
 
-## 9) Restore OpenClaw state backups
-As admin user (e.g., `lumi`), restore:
-- `~/.openclaw/openclaw.json`
-- `~/.openclaw/.env`
-- `~/.openclaw/credentials/`
-- `~/.openclaw/workspace/`
+## 5) Full manual fallback (if script fails)
 
-Then fix perms:
+### 5.1 Ubuntu → NixOS
 ```bash
-chmod 700 ~/.openclaw/credentials
+umount /boot/efi 2>/dev/null || umount -l /boot/efi 2>/dev/null || true
+curl -fsSL https://raw.githubusercontent.com/elitak/nixos-infect/master/nixos-infect -o /root/nixos-infect
+chmod +x /root/nixos-infect
+sed -i '/rm -rf \$bootFs\.bak/i : "${bootFs:=/boot}"' /root/nixos-infect
+doNetConf=y NIX_CHANNEL=nixos-25.11 bash -x /root/nixos-infect
 ```
 
-## 10) Failsafe if git install fails on NixOS
-Run as root:
+Reconnect after reboot:
+```bash
+ssh root@YOUR_SERVER_IP
+```
+
+### 5.2 Restore `/etc/nixos`
 ```bash
 nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#git
 hash -r
-git --version
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+ssh-keyscan -H github.com >> /root/.ssh/known_hosts
+chmod 600 /root/.ssh/known_hosts
 ```
 
-If needed, use one-shot git without permanent install:
+If needed, generate server key and add to GitHub:
 ```bash
-nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#git -c git --version
+ssh-keygen -t ed25519 -N '' -f /root/.ssh/id_ed25519 -C "recovery@$(hostname)"
+cat /root/.ssh/id_ed25519.pub
 ```
 
-## 11) Failsafe if OpenClaw install fails
-Run as admin user (example `lumi`):
+Test repo access:
 ```bash
-command -v node || nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#nodejs_22
+git ls-remote git@github.com:lumibot42/Lumi-VPS.git
+```
+
+Clone + apply:
+```bash
+mkdir -p /etc/nixos
+find /etc/nixos -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+git clone git@github.com:lumibot42/Lumi-VPS.git /etc/nixos
+nixos-rebuild test --flake /etc/nixos#nixos
+nixos-rebuild switch --flake /etc/nixos#nixos
+```
+
+### 5.3 Ensure admin SSH access (`lumi`)
+```bash
+id lumi >/dev/null 2>&1 || useradd -m -G wheel lumi
+mkdir -p /home/lumi/.ssh
+echo "YOUR_PUBLIC_KEY_HERE" > /home/lumi/.ssh/authorized_keys
+chmod 700 /home/lumi/.ssh
+chmod 600 /home/lumi/.ssh/authorized_keys
+chown -R lumi:users /home/lumi/.ssh
+```
+
+### 5.4 Install OpenClaw manually (as `lumi`)
+```bash
+su - lumi
+nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#nodejs_22
 mkdir -p ~/.npm-global
 npm config set prefix ~/.npm-global
 grep -qxF 'export PATH="$HOME/.npm-global/bin:$PATH"' ~/.profile || echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.profile
+grep -qxF 'export PATH="$HOME/.npm-global/bin:$PATH"' ~/.bashrc || echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.bashrc
 export PATH="$HOME/.npm-global/bin:$PATH"
 npm install -g openclaw
 openclaw --version
@@ -119,21 +166,52 @@ openclaw --version
 
 Optional root shim:
 ```bash
-ln -sf /home/<admin-user>/.npm-global/bin/openclaw /usr/local/bin/openclaw
+ln -sf /home/lumi/.npm-global/bin/openclaw /usr/local/bin/openclaw
 chmod 755 /usr/local/bin/openclaw
-```
-
-## 12) Verify services
-```bash
-openclaw gateway status
-openclaw status --deep
-openclaw models status
-fastfetch
 ```
 
 ---
 
-## Ongoing Rule
-Keep this card current whenever recovery steps change.
-- Update this file in repo: `docs/DISASTER-CARD.md`
-- Commit with: `docs: update disaster recovery card`
+## 6) Restore OpenClaw state (if backup exists)
+
+As `lumi`, restore:
+- `~/.openclaw/openclaw.json`
+- `~/.openclaw/.env`
+- `~/.openclaw/credentials/`
+- `~/.openclaw/workspace/`
+
+Then:
+```bash
+chmod 700 ~/.openclaw/credentials
+openclaw gateway start
+openclaw status --deep
+openclaw models status
+```
+
+---
+
+## 7) Final verification
+
+```bash
+nix --extra-experimental-features 'nix-command flakes' flake check /etc/nixos
+nixos-rebuild test --flake /etc/nixos#nixos
+openclaw gateway status
+openclaw status --deep
+openclaw update status
+openclaw security audit --deep
+```
+
+Expected: flake check passes, gateway running, no critical security findings.
+
+---
+
+## 8) Fast error map
+
+- `recovery-migrate.sh: No such file` → re-download from GitHub raw URL
+- `nix-command is disabled` → use `--extra-experimental-features 'nix-command flakes'`
+- `Permission denied (publickey)` → add server `.pub` key to GitHub
+- `openclaw: command not found` → export PATH + verify `~/.npm-global/bin/openclaw` + optional `/usr/local/bin` shim
+
+---
+
+Keep this card aligned with `docs/vps-rebuild-guide.md` whenever recovery flow changes.
