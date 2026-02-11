@@ -37,6 +37,8 @@ Prompts for:
 - NixOS repo URL (`git@github.com:lumibot42/Lumi-VPS.git`)
 - flake host (`nixos` default)
 
+No SSH keys are hardcoded in the script; it prompts when needed.
+
 If you need to generate a key from Windows, see **"Windows: SSH key setup (beginner-friendly)"** in `docs/vps-rebuild-guide.md`.
 
 > System will reboot automatically.

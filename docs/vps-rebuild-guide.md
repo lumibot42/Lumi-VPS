@@ -39,6 +39,8 @@ chmod +x /root/recovery-migrate.sh
 
 If migration state is missing, it re-prompts and continues.
 
+No SSH keys are hardcoded in the recovery script. It prompts for key details (or asks to generate a key) at runtime.
+
 ---
 
 ## What the recovery script now handles

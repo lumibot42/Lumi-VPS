@@ -155,6 +155,10 @@ ensure_repo_auth() {
     fi
     ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null || true
     chmod 600 /root/.ssh/known_hosts || true
+    if ! GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git ls-remote "$NIXOS_REPO" >/dev/null 2>&1; then
+      err "SSH access to repo failed: $NIXOS_REPO"
+      exit 1
+    fi
     GIT_CLONE_URL="$NIXOS_REPO"
   elif [[ "$NIXOS_REPO" =~ ^https:// ]]; then
     GIT_CLONE_URL="$NIXOS_REPO"
@@ -201,10 +205,11 @@ fi
 if [[ -d /etc/nixos/.git ]]; then
   log "Updating existing /etc/nixos"
   git -C /etc/nixos fetch --all --prune
-  git -C /etc/nixos reset --hard origin/main || true
+  git -C /etc/nixos reset --hard origin/main
 else
   log "Cloning /etc/nixos from repo"
-  rm -rf /etc/nixos/*
+  mkdir -p /etc/nixos
+  find /etc/nixos -mindepth 1 -maxdepth 1 -exec rm -rf {} +
   git clone "$GIT_CLONE_URL" /etc/nixos
 fi
 
@@ -285,12 +290,13 @@ EOS
 phase_ubuntu() {
   require_root
   prompt_common
-  ensure_repo_auth
-  write_post_script
 
   log "Installing Ubuntu prerequisites"
   apt update
   apt install -y curl git
+
+  ensure_repo_auth
+  write_post_script
 
   log "Configuring root SSH key"
   mkdir -p /root/.ssh && chmod 700 /root/.ssh
