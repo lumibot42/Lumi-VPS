@@ -32,6 +32,11 @@ ssh root@YOUR_SERVER_IP 'chmod +x /root/recovery-migrate.sh'
 ```
 This validates prerequisites and repo auth only (no destructive changes).
 
+Need flags quick reference:
+```bash
+/root/recovery-migrate.sh --help
+```
+
 ## 5) Run migration (Ubuntu -> NixOS)
 ```bash
 /root/recovery-migrate.sh

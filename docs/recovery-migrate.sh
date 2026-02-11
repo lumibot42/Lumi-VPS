@@ -7,7 +7,6 @@ set -euo pipefail
 STATE_DIR="/root/.lumi-recovery"
 STATE_FILE="$STATE_DIR/state.env"
 POST_SCRIPT="$STATE_DIR/post-nixos-restore.sh"
-mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
 
 log() { printf "\n[+] %s\n" "$*"; }
 warn() { printf "\n[!] %s\n" "$*"; }
@@ -17,7 +16,28 @@ require_root() {
   [[ "${EUID:-$(id -u)}" -eq 0 ]] || { err "Run as root."; exit 1; }
 }
 
+ensure_state_dir() {
+  mkdir -p "$STATE_DIR"
+  chmod 700 "$STATE_DIR"
+}
+
+print_help() {
+  cat <<'EOF'
+Usage:
+  recovery-migrate.sh [--smoke-test] [--help]
+
+Modes:
+  --smoke-test   Non-destructive preflight (checks prerequisites + repo auth)
+  --help         Show this help text and exit
+
+Default behavior (no flag):
+  - On Ubuntu/Debian: run migration phase (includes nixos-infect)
+  - On NixOS: run restore phase
+EOF
+}
+
 prompt_common() {
+  ensure_state_dir
   echo "=== Recovery Inputs ==="
   read -rp "Admin username (e.g., lumi): " ADMIN_USER
   read -rp "Server public IP or DNS: " SERVER_ENDPOINT
@@ -95,6 +115,7 @@ repo_url_effective() {
 }
 
 write_post_script() {
+  ensure_state_dir
   cat > "$POST_SCRIPT" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -380,8 +401,9 @@ phase_smoke_test() {
 MODE="run"
 case "${1:-}" in
   --smoke-test) MODE="smoke" ;;
+  --help|-h) print_help; exit 0 ;;
   "") ;;
-  *) err "Unknown argument: ${1:-}. Supported: --smoke-test"; exit 1 ;;
+  *) err "Unknown argument: ${1:-}. Supported: --smoke-test, --help"; exit 1 ;;
 esac
 
 if [[ -f /etc/os-release ]]; then
