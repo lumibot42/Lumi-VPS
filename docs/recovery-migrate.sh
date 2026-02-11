@@ -176,12 +176,19 @@ ensure_repo_auth() {
 }
 
 load_or_prompt_state
-ensure_repo_auth
 
 # Nix 2.4+ often needs experimental flags in non-interactive recovery shells.
 nixx() {
   nix --extra-experimental-features 'nix-command flakes' "$@"
 }
+
+if ! command -v git >/dev/null 2>&1; then
+  log "git not found on NixOS; installing it now"
+  nixx profile add nixpkgs#git
+  hash -r
+fi
+
+ensure_repo_auth
 
 log "Running NixOS post-migration restore"
 
@@ -195,12 +202,6 @@ chown -R "$ADMIN_USER:users" "/home/$ADMIN_USER/.ssh"
 mkdir -p /root/.ssh && chmod 700 /root/.ssh
 echo "$SSH_PUBKEY" > /root/.ssh/authorized_keys
 chmod 600 /root/.ssh/authorized_keys
-
-if ! command -v git >/dev/null 2>&1; then
-  log "git not found on NixOS; installing it now"
-  nixx profile add nixpkgs#git
-  hash -r
-fi
 
 if [[ -d /etc/nixos/.git ]]; then
   log "Updating existing /etc/nixos"
