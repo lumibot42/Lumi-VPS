@@ -26,7 +26,13 @@ scp ./recovery-migrate.sh root@YOUR_SERVER_IP:/root/recovery-migrate.sh
 ssh root@YOUR_SERVER_IP 'chmod +x /root/recovery-migrate.sh'
 ```
 
-## 4) Run migration (Ubuntu -> NixOS)
+## 4) Optional preflight (safe dry check)
+```bash
+/root/recovery-migrate.sh --smoke-test
+```
+This validates prerequisites and repo auth only (no destructive changes).
+
+## 5) Run migration (Ubuntu -> NixOS)
 ```bash
 /root/recovery-migrate.sh
 ```
@@ -43,12 +49,17 @@ If you need to generate a key from Windows, see **"Windows: SSH key setup (begin
 
 > System will reboot automatically.
 
-## 5) Reconnect after reboot (now NixOS)
+## 6) Reconnect after reboot (now NixOS)
 ```bash
 ssh root@YOUR_SERVER_IP
 ```
 
-## 6) Run restore phase
+## 7) Optional post-reboot smoke test
+```bash
+/root/recovery-migrate.sh --smoke-test
+```
+
+## 8) Run restore phase
 ```bash
 /root/recovery-migrate.sh
 ```
@@ -60,7 +71,7 @@ If prior state is missing, script re-prompts and continues.
 - User shell PATH entries (`.profile`, `.bashrc`, `.zshrc`) and `/usr/local/bin/openclaw` shim
 - post-install verification output (`PATH`, `which openclaw`, `openclaw --version` for root + admin)
 
-## 7) Restore OpenClaw state backups
+## 9) Restore OpenClaw state backups
 As admin user (e.g., `lumi`), restore:
 - `~/.openclaw/openclaw.json`
 - `~/.openclaw/.env`
@@ -72,7 +83,7 @@ Then fix perms:
 chmod 700 ~/.openclaw/credentials
 ```
 
-## 8) Failsafe if git install fails on NixOS
+## 10) Failsafe if git install fails on NixOS
 Run as root:
 ```bash
 nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#git
@@ -85,7 +96,7 @@ If needed, use one-shot git without permanent install:
 nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#git -c git --version
 ```
 
-## 9) Failsafe if OpenClaw install fails
+## 11) Failsafe if OpenClaw install fails
 Run as admin user (example `lumi`):
 ```bash
 command -v node || nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#nodejs_22
@@ -103,7 +114,7 @@ ln -sf /home/<admin-user>/.npm-global/bin/openclaw /usr/local/bin/openclaw
 chmod 755 /usr/local/bin/openclaw
 ```
 
-## 10) Verify services
+## 12) Verify services
 ```bash
 openclaw gateway status
 openclaw status --deep

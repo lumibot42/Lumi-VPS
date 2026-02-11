@@ -326,12 +326,82 @@ phase_nixos() {
   bash "$POST_SCRIPT"
 }
 
+phase_smoke_test() {
+  require_root
+  local failures=0
+
+  log "Smoke test mode: non-destructive validation only"
+  load_or_prompt_state
+
+  if ! command -v git >/dev/null 2>&1; then
+    warn "git not found"
+    failures=$((failures+1))
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    warn "curl not found"
+    failures=$((failures+1))
+  fi
+
+  if [[ "${ID:-}" == "nixos" ]]; then
+    if ! command -v nixos-rebuild >/dev/null 2>&1; then
+      warn "nixos-rebuild not found"
+      failures=$((failures+1))
+    fi
+    if [[ -d /etc/nixos && -f /etc/nixos/flake.nix ]]; then
+      if ! nixos-rebuild dry-build --flake "/etc/nixos#${FLAKE_HOST:-nixos}" >/dev/null; then
+        warn "nixos-rebuild dry-build failed"
+        failures=$((failures+1))
+      fi
+    else
+      warn "/etc/nixos flake not present yet (expected before restore)"
+    fi
+  fi
+
+  if command -v git >/dev/null 2>&1; then
+    if ensure_repo_auth; then
+      log "Repo auth check passed"
+    else
+      warn "Repo auth check failed"
+      failures=$((failures+1))
+    fi
+  else
+    warn "Skipping repo auth check because git is missing"
+  fi
+
+  if [[ $failures -gt 0 ]]; then
+    err "Smoke test failed with $failures issue(s)."
+    exit 1
+  fi
+
+  log "Smoke test passed. Recovery prerequisites look good."
+}
+
+MODE="run"
+case "${1:-}" in
+  --smoke-test) MODE="smoke" ;;
+  "") ;;
+  *) err "Unknown argument: ${1:-}. Supported: --smoke-test"; exit 1 ;;
+esac
+
 if [[ -f /etc/os-release ]]; then
   # shellcheck source=/dev/null
   source /etc/os-release
   case "${ID:-}" in
-    ubuntu|debian) phase_ubuntu ;;
-    nixos) phase_nixos ;;
+    ubuntu|debian)
+      if [[ "$MODE" == "smoke" ]]; then
+        phase_smoke_test
+      else
+        phase_ubuntu
+      fi
+      ;;
+    nixos)
+      if [[ "$MODE" == "smoke" ]]; then
+        phase_smoke_test
+      else
+        phase_nixos
+      fi
+      ;;
     *) err "Unsupported OS: ${ID:-unknown}"; exit 1 ;;
   esac
 else

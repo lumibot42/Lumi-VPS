@@ -23,6 +23,14 @@ chmod +x /root/recovery-migrate.sh
 /root/recovery-migrate.sh
 ```
 
+Optional preflight (non-destructive):
+
+```bash
+/root/recovery-migrate.sh --smoke-test
+```
+
+This checks prerequisites + repo authentication without running `nixos-infect` or applying rebuild changes.
+
 After reboot to NixOS, run the same script again:
 
 ```bash
