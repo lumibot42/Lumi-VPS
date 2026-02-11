@@ -32,6 +32,8 @@ ssh root@YOUR_SERVER_IP 'chmod +x /root/recovery-migrate.sh'
 ```
 This validates prerequisites and repo auth only (no destructive changes).
 
+**Strongly recommended:** run this right before migration on any fresh rebuild.
+
 Need flags quick reference:
 ```bash
 /root/recovery-migrate.sh --help
@@ -49,6 +51,8 @@ Prompts for:
 - flake host (`nixos` default)
 
 No SSH keys are hardcoded in the script; it prompts when needed.
+
+Critical: paste the correct SSH public key when prompted, or you can lock yourself out.
 
 If you need to generate a key from Windows, see **"Windows: SSH key setup (beginner-friendly)"** in `docs/vps-rebuild-guide.md`.
 

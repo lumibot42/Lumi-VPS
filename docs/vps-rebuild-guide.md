@@ -37,6 +37,8 @@ View script flags/help:
 
 This checks prerequisites + repo authentication without running `nixos-infect` or applying rebuild changes.
 
+**Recommendation:** Always run `--smoke-test` immediately before starting migration on a fresh host.
+
 After reboot to NixOS, run the same script again:
 
 ```bash
