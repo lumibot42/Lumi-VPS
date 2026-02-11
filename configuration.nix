@@ -24,25 +24,27 @@
   zramSwap.enable = true;
   services.logrotate.checkConfig = false; # NixOS/nix#8502
 
-  # --- SSH (key-only, no passwords) ---
+  # --- SSH (hardened, key-only, non-root) ---
   services.openssh.enable = true;
   services.openssh.settings = {
     PasswordAuthentication = false;
     KbdInteractiveAuthentication = false;
-    PermitRootLogin = "prohibit-password";
+    PermitRootLogin = "no";
+    AllowUsers = [ "lumi" ];
+    MaxAuthTries = 3;
+    LoginGraceTime = "20s";
+    MaxSessions = 2;
+    MaxStartups = "10:30:60";
+    X11Forwarding = false;
+    AllowAgentForwarding = false;
+    AllowTcpForwarding = false;
+    PermitTunnel = false;
   };
 
-  # --- Users (mutable — passwords set via passwd) ---
-  users.users.root.openssh.authorizedKeys.keys = [
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINkm1ttBzZryoAqdfV41IQuB1z/jWs1STdopUrovOjFU vps-access"
-  ];
-
+  # --- Users (mutable; SSH keys are provisioned at restore/runtime) ---
   users.users.lumi = {
     isNormalUser = true;
     extraGroups = [ "wheel" ];
-    openssh.authorizedKeys.keys = [
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINkm1ttBzZryoAqdfV41IQuB1z/jWs1STdopUrovOjFU vps-access"
-    ];
   };
 
   security.sudo.wheelNeedsPassword = false;
@@ -50,6 +52,7 @@
   # --- Firewall (deny all, allow SSH only) ---
   networking.firewall.enable = true;
   networking.firewall.allowedTCPPorts = [ 22 ];
+  networking.firewall.allowPing = false;
 
   # --- Security ---
   services.fail2ban.enable = true;
