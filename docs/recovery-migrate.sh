@@ -260,9 +260,10 @@ fi
 read -rp "Install OpenClaw for $ADMIN_USER now? [Y/n]: " INSTALL_OPENCLAW
 if [[ -z "${INSTALL_OPENCLAW:-}" || "${INSTALL_OPENCLAW,,}" == "y" || "${INSTALL_OPENCLAW,,}" == "yes" ]]; then
   log "Installing OpenClaw prerequisites"
-  if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    nixx profile add nixpkgs#nodejs_22
-    hash -r
+
+  # Ensure Node/npm are available for the admin user context (not just root).
+  if ! su - "$ADMIN_USER" -c 'command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1'; then
+    su - "$ADMIN_USER" -c "nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#nodejs_22"
   fi
 
   log "Installing OpenClaw as $ADMIN_USER"
