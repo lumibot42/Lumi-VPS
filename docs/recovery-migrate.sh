@@ -174,6 +174,11 @@ ensure_repo_auth() {
 load_or_prompt_state
 ensure_repo_auth
 
+# Nix 2.4+ often needs experimental flags in non-interactive recovery shells.
+nixx() {
+  nix --extra-experimental-features 'nix-command flakes' "$@"
+}
+
 log "Running NixOS post-migration restore"
 
 id "$ADMIN_USER" >/dev/null 2>&1 || useradd -m -G wheel "$ADMIN_USER"
@@ -189,7 +194,7 @@ chmod 600 /root/.ssh/authorized_keys
 
 if ! command -v git >/dev/null 2>&1; then
   log "git not found on NixOS; installing it now"
-  nix profile install nixpkgs#git
+  nixx profile add nixpkgs#git
   hash -r
 fi
 
@@ -229,7 +234,7 @@ read -rp "Install OpenClaw for $ADMIN_USER now? [Y/n]: " INSTALL_OPENCLAW
 if [[ -z "${INSTALL_OPENCLAW:-}" || "${INSTALL_OPENCLAW,,}" == "y" || "${INSTALL_OPENCLAW,,}" == "yes" ]]; then
   log "Installing OpenClaw prerequisites"
   if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    nix profile install nixpkgs#nodejs_22
+    nixx profile add nixpkgs#nodejs_22
     hash -r
   fi
 
@@ -245,11 +250,7 @@ if [[ -z "${INSTALL_OPENCLAW:-}" || "${INSTALL_OPENCLAW,,}" == "y" || "${INSTALL
     su - "$ADMIN_USER" -c "grep -qxF 'export PATH=\"\$HOME/.npm-global/bin:\$PATH\"' \"$ADMIN_HOME/$RC\" || echo 'export PATH=\"\$HOME/.npm-global/bin:\$PATH\"' >> \"$ADMIN_HOME/$RC\""
   done
 
-  cat > /etc/profile.d/openclaw-path.sh <<EOF
-export PATH="$ADMIN_HOME/.npm-global/bin:\$PATH"
-EOF
-  chmod 644 /etc/profile.d/openclaw-path.sh
-
+  # NixOS may not provide /etc/profile.d in mutable form; rely on user shell rc files + shim.
   su - "$ADMIN_USER" -c 'export PATH="$HOME/.npm-global/bin:$PATH"; npm install -g openclaw'
 
   if [[ -x "$ADMIN_HOME/.npm-global/bin/openclaw" ]]; then

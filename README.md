@@ -24,7 +24,7 @@ The script now supports:
 - Missing state re-prompt
 - Auto-install of `git` on NixOS (if missing)
 - Optional OpenClaw install for admin user
-- PATH resolution during OpenClaw install (`.profile`, `.bashrc`, `.zshrc`, `/etc/profile.d`)
+- PATH resolution during OpenClaw install (`.profile`, `.bashrc`, `.zshrc`) and global shim `/usr/local/bin/openclaw`
 - Global shim at `/usr/local/bin/openclaw`
 - Post-install verification (`PATH`, `which openclaw`, `openclaw --version`)
 

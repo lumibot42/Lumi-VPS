@@ -37,6 +37,8 @@ Prompts for:
 - NixOS repo URL (`git@github.com:lumibot42/Lumi-VPS.git`)
 - flake host (`nixos` default)
 
+If you need to generate a key from Windows, see **"Windows: SSH key setup (beginner-friendly)"** in `docs/vps-rebuild-guide.md`.
+
 > System will reboot automatically.
 
 ## 5) Reconnect after reboot (now NixOS)
@@ -53,9 +55,7 @@ If prior state is missing, script re-prompts and continues.
 ### Restore phase now also handles:
 - `git` install on NixOS (if missing)
 - optional OpenClaw install for admin user
-- PATH setup across `.profile`, `.bashrc`, `.zshrc`
-- `/etc/profile.d/openclaw-path.sh`
-- `/usr/local/bin/openclaw` shim
+- User shell PATH entries (`.profile`, `.bashrc`, `.zshrc`) and `/usr/local/bin/openclaw` shim
 - post-install verification output (`PATH`, `which openclaw`, `openclaw --version` for root + admin)
 
 ## 7) Restore OpenClaw state backups
@@ -70,7 +70,38 @@ Then fix perms:
 chmod 700 ~/.openclaw/credentials
 ```
 
-## 8) Verify services
+## 8) Failsafe if git install fails on NixOS
+Run as root:
+```bash
+nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#git
+hash -r
+git --version
+```
+
+If needed, use one-shot git without permanent install:
+```bash
+nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#git -c git --version
+```
+
+## 9) Failsafe if OpenClaw install fails
+Run as admin user (example `lumi`):
+```bash
+command -v node || nix --extra-experimental-features 'nix-command flakes' profile add nixpkgs#nodejs_22
+mkdir -p ~/.npm-global
+npm config set prefix ~/.npm-global
+grep -qxF 'export PATH="$HOME/.npm-global/bin:$PATH"' ~/.profile || echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.profile
+export PATH="$HOME/.npm-global/bin:$PATH"
+npm install -g openclaw
+openclaw --version
+```
+
+Optional root shim:
+```bash
+ln -sf /home/<admin-user>/.npm-global/bin/openclaw /usr/local/bin/openclaw
+chmod 755 /usr/local/bin/openclaw
+```
+
+## 10) Verify services
 ```bash
 openclaw gateway status
 openclaw status --deep
