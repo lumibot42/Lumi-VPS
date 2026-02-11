@@ -6,35 +6,95 @@ This repository is the **source of truth** for rebuilding the VPS to a clean **N
 
 Use this when you want the fastest safe rebuild path.
 
+1) Fresh Ubuntu VPS as root
 ```bash
-# 1) Fresh Ubuntu VPS as root
 ssh root@YOUR_SERVER_IP
+```
+
+2) Install prerequisites
+```bash
 apt update && apt install -y curl git
+```
+
+3) Prepare root SSH directory
+```bash
 mkdir -p /root/.ssh && chmod 700 /root/.ssh
+```
+
+4) Paste your public key
+```bash
 cat > /root/.ssh/authorized_keys
-# paste your public key, then Ctrl+D
+```
+(then paste key, press `Ctrl+D`)
+
+5) Lock key file permissions
+```bash
 chmod 600 /root/.ssh/authorized_keys
+```
 
-# 2) Pull recovery script
+6) Download recovery script
+```bash
 curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
+```
+
+7) Make script executable
+```bash
 chmod +x /root/recovery-migrate.sh
+```
 
-# 3) Preflight + run
+8) Show help
+```bash
 /root/recovery-migrate.sh --help
-/root/recovery-migrate.sh --smoke-test
-/root/recovery-migrate.sh
-# system reboots
+```
 
-# 4) Reconnect and complete restore
+9) Run non-destructive preflight
+```bash
+/root/recovery-migrate.sh --smoke-test
+```
+
+10) Start migration
+```bash
+/root/recovery-migrate.sh
+```
+(system reboots)
+
+11) Reconnect after reboot
+```bash
 ssh root@YOUR_SERVER_IP
-/root/recovery-migrate.sh --smoke-test
-/root/recovery-migrate.sh
+```
 
-# 5) Final verification
+12) Run post-reboot preflight
+```bash
+/root/recovery-migrate.sh --smoke-test
+```
+
+13) Run restore phase
+```bash
+/root/recovery-migrate.sh
+```
+
+14) Verify NixOS flake health
+```bash
 nix --extra-experimental-features 'nix-command flakes' flake check /etc/nixos
+```
+
+15) Verify rebuild test
+```bash
 nixos-rebuild test --flake /etc/nixos#nixos
+```
+
+16) Verify OpenClaw gateway
+```bash
 openclaw gateway status
+```
+
+17) Verify OpenClaw status
+```bash
 openclaw status --deep
+```
+
+18) Verify OpenClaw security
+```bash
 openclaw security audit --deep
 ```
 
