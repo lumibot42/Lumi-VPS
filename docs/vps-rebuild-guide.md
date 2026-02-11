@@ -39,6 +39,69 @@ End state should be:
 
 ---
 
+## Go-time checklist (copy/paste quick flow)
+
+Use this when you just need the shortest safe path.
+
+### 1) Fresh Ubuntu prep (root)
+
+```bash
+ssh root@YOUR_SERVER_IP
+apt update && apt install -y curl git
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+cat > /root/.ssh/authorized_keys
+```
+
+Paste your public key, then press `Ctrl+D`:
+
+```bash
+chmod 600 /root/.ssh/authorized_keys
+```
+
+### 2) Pull script
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
+chmod +x /root/recovery-migrate.sh
+```
+
+### 3) Non-destructive preflight
+
+```bash
+/root/recovery-migrate.sh --help
+/root/recovery-migrate.sh --smoke-test
+```
+
+### 4) Run migration
+
+```bash
+/root/recovery-migrate.sh
+```
+
+_System reboots during Ubuntu → NixOS._
+
+### 5) Reconnect + restore
+
+```bash
+ssh root@YOUR_SERVER_IP
+/root/recovery-migrate.sh --smoke-test
+/root/recovery-migrate.sh
+```
+
+### 6) Final verify
+
+```bash
+nix --extra-experimental-features 'nix-command flakes' flake check /etc/nixos
+nixos-rebuild test --flake /etc/nixos#nixos
+openclaw gateway status
+openclaw status --deep
+openclaw security audit --deep
+```
+
+If anything fails, continue with the manual fallback phases below.
+
+---
+
 ## Phase 0 — What you need before starting
 
 Have these ready:
