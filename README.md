@@ -1,45 +1,63 @@
 # NixOS VPS Rebuild Runbook
 
-## Source of truth
-- `/etc/nixos` is the canonical system config.
-- Flakes are the primary workflow (`flake.nix` + `flake.lock`) for reproducible rebuilds.
-- Recovery automation lives in `docs/recovery-migrate.sh`.
+This repository is the **source of truth** for rebuilding the VPS to a clean **NixOS + OpenClaw** state.
 
-## Recovery workflow (Ubuntu -> NixOS)
+## Core operating rules
 
-On Ubuntu (root):
+1. Treat this host as **NixOS-first** (not Ubuntu-style imperative admin).
+2. Before system changes, check latest official docs:
+   - https://nixos.org/manual/nixos/stable/
+   - https://wiki.nixos.org/
+3. Make declarative changes in `/etc/nixos` (tracked by this repo).
+4. Run `nixos-rebuild test --flake ...` before `switch`.
+5. Keep recovery docs in sync after any workflow change.
+
+## Key security/recovery decisions
+
+- `/etc/nixos` is canonical config.
+- Flakes are required (`flake.nix` + `flake.lock`).
+- **No hardcoded SSH authorized keys** in `configuration.nix`.
+- SSH keys are provisioned at restore/runtime to support per-rebuild key rotation.
+
+## Recovery entry points
+
+- Full first-time + manual fallback guide:
+  - `docs/vps-rebuild-guide.md`
+- Quick emergency checklist:
+  - `docs/DISASTER-CARD.md`
+- Automation script:
+  - `docs/recovery-migrate.sh`
+
+## Script usage
+
+On target host as root:
+
 ```bash
-apt update && apt install -y git curl
 curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
 chmod +x /root/recovery-migrate.sh
-/root/recovery-migrate.sh
 ```
 
-After reboot to NixOS (root):
+Flags:
+
 ```bash
-/root/recovery-migrate.sh
+/root/recovery-migrate.sh --help
+/root/recovery-migrate.sh --smoke-test
 ```
 
-The script now supports:
-- Missing state re-prompt
-- Auto-install of `git` on NixOS (if missing)
-- Optional OpenClaw install for admin user
-- PATH resolution during OpenClaw install (`.profile`, `.bashrc`, `.zshrc`) and global shim `/usr/local/bin/openclaw`
-- Global shim at `/usr/local/bin/openclaw`
-- Post-install verification (`PATH`, `which openclaw`, `openclaw --version`)
+Recommended flow:
+1. Run `--smoke-test`
+2. If clean, run `/root/recovery-migrate.sh`
+3. After reboot to NixOS, run script again for restore phase
 
-## Rebuild workflow (flake-first)
+## Rebuild workflow (after restore)
 
-1. Edit config in `/etc/nixos`
-2. Test build:
 ```bash
 sudo nixos-rebuild test --flake /etc/nixos#nixos
-```
-3. Apply:
-```bash
 sudo nixos-rebuild switch --flake /etc/nixos#nixos
 ```
-4. Commit:
+
+Then commit changes:
+
 ```bash
 sudo git -C /etc/nixos add -A
 sudo git -C /etc/nixos commit -m "describe change"
@@ -50,30 +68,20 @@ sudo git -C /etc/nixos commit -m "describe change"
 ```bash
 cd /etc/nixos
 sudo nix flake update
+sudo nixos-rebuild test --flake /etc/nixos#nixos
 sudo nixos-rebuild switch --flake /etc/nixos#nixos
 sudo git add flake.lock
 sudo git commit -m "chore: flake update"
 ```
 
-## Legacy fallback (emergency only)
-Use only if flake entrypoint is unavailable:
-```bash
-sudo nixos-rebuild switch
-```
+## OpenClaw backup checklist
 
-## Disaster recovery checklist
-- [ ] Push `/etc/nixos` repo to private remote
-- [ ] Backup `~/.openclaw/openclaw.json`
-- [ ] Backup `~/.openclaw/.env`
-- [ ] Backup `~/.openclaw/credentials/` (mode 700)
-- [ ] Backup `~/.openclaw/workspace/`
-
-## Repo visibility note
-- This repository is intentionally **public**.
-- Commands in this runbook assume direct public GitHub access.
+- `~/.openclaw/openclaw.json`
+- `~/.openclaw/.env`
+- `~/.openclaw/credentials/` (mode 700)
+- `~/.openclaw/workspace/`
 
 ## Notes
-- Keep changes declarative (no imperative drift).
-- Keep comments concise and operational.
-- Prefer `nixos-rebuild ... --flake` for reproducibility.
-- Keep `README.md`, `docs/vps-rebuild-guide.md`, and `docs/DISASTER-CARD.md` in sync after workflow changes.
+
+- Repo is intentionally public.
+- If repo visibility changes to private, use SSH deploy key or token-auth HTTPS.
