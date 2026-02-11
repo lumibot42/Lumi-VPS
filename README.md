@@ -2,6 +2,46 @@
 
 This repository is the **source of truth** for rebuilding the VPS to a clean **NixOS + OpenClaw** state.
 
+## 🚀 Go-time checklist (front page quick start)
+
+Use this when you want the fastest safe rebuild path.
+
+```bash
+# 1) Fresh Ubuntu VPS as root
+ssh root@YOUR_SERVER_IP
+apt update && apt install -y curl git
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+cat > /root/.ssh/authorized_keys
+# paste your public key, then Ctrl+D
+chmod 600 /root/.ssh/authorized_keys
+
+# 2) Pull recovery script
+curl -fsSL https://raw.githubusercontent.com/lumibot42/Lumi-VPS/main/docs/recovery-migrate.sh -o /root/recovery-migrate.sh
+chmod +x /root/recovery-migrate.sh
+
+# 3) Preflight + run
+/root/recovery-migrate.sh --help
+/root/recovery-migrate.sh --smoke-test
+/root/recovery-migrate.sh
+# system reboots
+
+# 4) Reconnect and complete restore
+ssh root@YOUR_SERVER_IP
+/root/recovery-migrate.sh --smoke-test
+/root/recovery-migrate.sh
+
+# 5) Final verification
+nix --extra-experimental-features 'nix-command flakes' flake check /etc/nixos
+nixos-rebuild test --flake /etc/nixos#nixos
+openclaw gateway status
+openclaw status --deep
+openclaw security audit --deep
+```
+
+If any step fails, follow:
+- `docs/vps-rebuild-guide.md` (full manual fallback)
+- `docs/DISASTER-CARD.md` (quick emergency path)
+
 ## Core operating rules
 
 1. Treat this host as **NixOS-first** (not Ubuntu-style imperative admin).
